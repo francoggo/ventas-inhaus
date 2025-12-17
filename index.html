@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Comercial Inmobiliario | BI View</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            dark: '#1e293b',
+                            primary: '#3b82f6',
+                            accent: '#10b981',
+                            warning: '#f59e0b',
+                            danger: '#ef4444'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans">
+
+    <nav class="bg-brand-dark text-white p-4 shadow-lg">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-building-columns text-brand-primary text-2xl"></i>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wide">INHAUS BI DASHBOARD</h1>
+                    <p class="text-xs text-slate-400">Análisis de Ventas & Comisiones</p>
+                </div>
+            </div>
+            <div class="flex gap-4">
+                <label class="cursor-pointer bg-brand-primary hover:bg-blue-600 px-4 py-2 rounded text-sm transition font-medium">
+                    <i class="fa-solid fa-upload mr-2"></i> Actualizar Data (CSV)
+                    <input type="file" id="csvUpload" accept=".csv" class="hidden">
+                </label>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto p-6 space-y-6">
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-brand-primary">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-slate-500 text-sm font-medium uppercase">Venta Total Acumulada</p>
+                        <h2 class="text-3xl font-bold mt-1" id="kpi-total-venta">$0.00</h2>
+                    </div>
+                    <div class="p-3 bg-blue-50 rounded-full text-brand-primary">
+                        <i class="fa-solid fa-money-bill-trend-up"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-brand-accent">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-slate-500 text-sm font-medium uppercase">Comisiones Generadas</p>
+                        <h2 class="text-3xl font-bold mt-1" id="kpi-total-comision">$0.00</h2>
+                    </div>
+                    <div class="p-3 bg-green-50 rounded-full text-brand-accent">
+                        <i class="fa-solid fa-hand-holding-dollar"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-brand-warning">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-slate-500 text-sm font-medium uppercase">Total Operaciones</p>
+                        <h2 class="text-3xl font-bold mt-1" id="kpi-total-ops">0</h2>
+                        <p class="text-xs text-slate-400 mt-1">Ticket Promedio: <span id="kpi-ticket-avg">$0</span></p>
+                    </div>
+                    <div class="p-3 bg-yellow-50 rounded-full text-brand-warning">
+                        <i class="fa-solid fa-file-contract"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-purple-500">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-slate-500 text-sm font-medium uppercase">Pipeline (En Espera)</p>
+                        <h2 class="text-3xl font-bold mt-1" id="kpi-pipeline">0</h2>
+                        <p class="text-xs text-slate-400 mt-1">Valor: <span id="kpi-pipeline-val">$0</span></p>
+                    </div>
+                    <div class="p-3 bg-purple-50 rounded-full text-purple-600">
+                        <i class="fa-solid fa-clock"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm">
+                <h3 class="text-lg font-bold mb-4 text-slate-700">Top Proyectos por Monto de Venta</h3>
+                <div class="h-64">
+                    <canvas id="chartProyectos"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm">
+                <h3 class="text-lg font-bold mb-4 text-slate-700">Distribución por Estatus</h3>
+                <div class="h-64 flex justify-center">
+                    <canvas id="chartEstatus"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-sm">
+            <h3 class="text-lg font-bold mb-4 text-slate-700">Rendimiento por Vendedor (Comisiones y Ventas)</h3>
+            <div class="h-72">
+                <canvas id="chartVendedores"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-sm overflow-hidden">
+            <h3 class="text-lg font-bold mb-4 text-slate-700">Detalle de Últimas Operaciones</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm text-left text-slate-600">
+                    <thead class="text-xs text-slate-700 uppercase bg-slate-50 border-b">
+                        <tr>
+                            <th class="px-6 py-3">Fecha</th>
+                            <th class="px-6 py-3">Proyecto</th>
+                            <th class="px-6 py-3">Cliente</th>
+                            <th class="px-6 py-3 text-right">Monto Venta</th>
+                            <th class="px-6 py-3 text-right">Comisión</th>
+                            <th class="px-6 py-3 text-center">Estatus</th>
+                            <th class="px-6 py-3">Vendedor</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="text-center py-6 text-slate-400 text-sm">
+        <p>Generado por Gemini AI | Inhaus Real Estate Intelligence</p>
+    </footer>
+
+    <script>
+        // 1. DATA RAW (Cleaned from Prompt)
+        const initialCSV = `FECHA,NOMBRE,PROYECTO,NEGOCIO,GESTOR,TELEFONO,RECURSO,APARTADO,CUENTA,ENGANCHE,VENTA,%_COMISION,$_COMISION,ESTATUS,VENDEDOR
+2025-05-05,ANA LAURA PEREZ LINARES,SAN FERNANDO,VENTA,ITZEL FLORES,6692155787,COFINAVIT,30000,,0,1625000,0.04,65000,CANCELADO,ERICKA REYNOSA
+2025-05-28,HUGO ADAN MENDEZ VEGA,HACIENDA DEL SEMINARIO,VENTA,OSCAR OJEDA,6692550173,INFONAVIT TOTAL,30000,OTRA INMOBILIARIA,0,1890000,0.025,47250,ESPERA,ERICKA REYNOSA
+2025-05-05,ELISA ZAMORA MARTINEZ,PRADERA DORADA,VENTA,OSCAR OJEDA,6692550173,INFONAVIT TOTAL,40000,,0,1250000,0.04,50000,OPERADO,ERICKA REYNOSA
+2025-04-30,JOHAN CONTRERAS ZARATE,COLINAS DEL REAL,VENTA,ALMA VELARDE,6699202091,FOVISSSTE,40000,,0,1480000,0.04,59200,OPERADO,VALERIA REYNOSA
+2025-05-29,VIVIANA CASTRO CASTRO,SONTERRA LOTE,VENTA,OSCAR OJEDA,6692550173,,50000,VICTOR,0,1340000,0.05,67000,OPERADO,VALERIA REYNOSA
+2025-08-15,PARRA TIZNADO RICARDO,PLAZA BOCANEGRA,VENTA,VICTOR REBOLLEDO,6691060263,CONTADO,50000,GUADALUPE,0,3513320,0.05,175666,OPERANDO,PAOLA SARABIA
+2025-10-03,ALAIN OSUNA CONCRETOS,PLAZA BOCANEGRA,VENTA,VICTOR REBOLLEDO,6691060263,CONTADO,50000,GUADALUPE,0,1984000,0.05,99200,POR COBRAR,CRISTOBAL BALDERRAMA
+2025-11-24,SARAH DANIELA CORRAL ZAMUDIO,,VENTA,SIN NOMBRE,,financiamiento directo,305289.5,SONTERRA,381121,1526448,0.02,30528.96,POR COBRAR,VALERIA REYNOSA
+2025-11-28,ROLDAN ORTIZ LEYVA,SUNSET HLLS,VENTA,SIN NOMBRE,,Credito Hipotecario,100000,OTRA INMOBILIARIA,300000,4100000,0.025,102500,POR COBRAR,ERICKA REYNOSA
+2025-12-05,NORMA LETICIA AYON OSUNA,SUNSET HILLS,APARTADO,SIN NOMBRE,,CONTADO,50000,,,2343250,0.04,93730,ESPERA,ERICKA REYNOSA
+2025-12-10,IVAN HORACIO MORALES GARCIA,PLAZA BOCANEGRA,APARTADO,VICTOR H. REBOLLEDO,,Contado y trabajo,100000,,,2224000,0.05,111200,ESPERA,ERICKA REYNOSA
+2025-12-17,HUGO ADAN MENDEZ VEGA,TORRE AFRIKA,APARTADO,SIN NOMBRE,,INFONAVIT - CONTADO,50000,,500000,2485000,0.025,62125,ESPERA,ERICKA REYNOSA`;
+
+        // Global Charts
+        let chartInstances = {};
+
+        // 2. PARSING & UTILS
+        const parseCurrency = (val) => {
+            if (!val) return 0;
+            if (typeof val === 'number') return val;
+            return parseFloat(val.replace(/[$,]/g, '')) || 0;
+        };
+
+        const formatCurrency = (val) => {
+            return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(val);
+        };
+
+        const initDashboard = (csvData) => {
+            Papa.parse(csvData, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    processData(results.data);
+                }
+            });
+        };
+
+        // 3. CORE LOGIC
+        const processData = (data) => {
+            // Clean Data
+            const cleanData = data.filter(r => r.VENTA && r.ESTATUS).map(row => ({
+                ...row,
+                ventaVal: parseCurrency(row.VENTA),
+                comisionVal: parseCurrency(row.$_COMISION),
+                estatus: row.ESTATUS.trim().toUpperCase(),
+                proyecto: row.PROYECTO ? row.PROYECTO.trim() : 'SIN ASIGNAR',
+                vendedor: row.VENDEDOR ? row.VENDEDOR.trim() : 'NO ASIGNADO'
+            }));
+
+            // KPI Calculations
+            const totalVenta = cleanData.reduce((acc, curr) => acc + curr.ventaVal, 0);
+            const totalComision = cleanData.reduce((acc, curr) => acc + curr.comisionVal, 0);
+            const totalOps = cleanData.length;
+            const pipelineOps = cleanData.filter(r => r.estatus.includes('ESPERA') || r.estatus.includes('APARTADO'));
+            const pipelineVal = pipelineOps.reduce((acc, curr) => acc + curr.ventaVal, 0);
+
+            // DOM Updates for KPIs
+            document.getElementById('kpi-total-venta').innerText = formatCurrency(totalVenta);
+            document.getElementById('kpi-total-comision').innerText = formatCurrency(totalComision);
+            document.getElementById('kpi-total-ops').innerText = totalOps;
+            document.getElementById('kpi-ticket-avg').innerText = formatCurrency(totalVenta / totalOps);
+            document.getElementById('kpi-pipeline').innerText = pipelineOps.length;
+            document.getElementById('kpi-pipeline-val').innerText = formatCurrency(pipelineVal);
+
+            // Aggregations for Charts
+            
+            // By Proyecto
+            const ventasPorProyecto = cleanData.reduce((acc, curr) => {
+                acc[curr.proyecto] = (acc[curr.proyecto] || 0) + curr.ventaVal;
+                return acc;
+            }, {});
+            
+            // By Estatus
+            const countPorEstatus = cleanData.reduce((acc, curr) => {
+                acc[curr.estatus] = (acc[curr.estatus] || 0) + 1;
+                return acc;
+            }, {});
+
+            // By Vendedor
+            const ventasPorVendedor = cleanData.reduce((acc, curr) => {
+                acc[curr.vendedor] = (acc[curr.vendedor] || 0) + curr.ventaVal;
+                return acc;
+            }, {});
+
+            renderCharts(ventasPorProyecto, countPorEstatus, ventasPorVendedor);
+            renderTable(cleanData);
+        };
+
+        // 4. CHART RENDERING
+        const renderCharts = (byProj, byStatus, bySeller) => {
+            // Destroy existing charts if update
+            ['chartProyectos', 'chartEstatus', 'chartVendedores'].forEach(id => {
+                if(chartInstances[id]) chartInstances[id].destroy();
+            });
+
+            // 1. Proyectos (Horizontal Bar)
+            const ctxProj = document.getElementById('chartProyectos').getContext('2d');
+            chartInstances['chartProyectos'] = new Chart(ctxProj, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(byProj),
+                    datasets: [{
+                        label: 'Monto Vendido',
+                        data: Object.values(byProj),
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 5
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            // 2. Estatus (Doughnut)
+            const ctxStatus = document.getElementById('chartEstatus').getContext('2d');
+            
+            // Color mapping based on status sentiment
+            const statusColors = Object.keys(byStatus).map(s => {
+                if(s.includes('CANCEL')) return '#ef4444'; // Red
+                if(s.includes('ESPERA')) return '#f59e0b'; // Amber
+                if(s.includes('COBRAR')) return '#6366f1'; // Indigo
+                return '#10b981'; // Green (Operado)
+            });
+
+            chartInstances['chartEstatus'] = new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(byStatus),
+                    datasets: [{
+                        data: Object.values(byStatus),
+                        backgroundColor: statusColors,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { position: 'right' }
+                    }
+                }
+            });
+
+            // 3. Vendedores (Bar)
+            const ctxSeller = document.getElementById('chartVendedores').getContext('2d');
+            chartInstances['chartVendedores'] = new Chart(ctxSeller, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(bySeller),
+                    datasets: [{
+                        label: 'Ventas Totales',
+                        data: Object.values(bySeller),
+                        backgroundColor: '#1e293b',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        };
+
+        // 5. TABLE RENDERING
+        const renderTable = (data) => {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            // Sort by date desc (assuming future dates are mostly projections, put them top)
+            data.sort((a, b) => new Date(b.FECHA) - new Date(a.FECHA));
+
+            data.slice(0, 15).forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "bg-white border-b hover:bg-slate-50 transition";
+                
+                // Status Badge Logic
+                let statusClass = "bg-gray-100 text-gray-800";
+                if(row.estatus.includes('OPERADO')) statusClass = "bg-green-100 text-green-800";
+                else if(row.estatus.includes('ESPERA')) statusClass = "bg-yellow-100 text-yellow-800";
+                else if(row.estatus.includes('CANCEL')) statusClass = "bg-red-100 text-red-800";
+                else if(row.estatus.includes('COBRAR')) statusClass = "bg-indigo-100 text-indigo-800";
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-medium text-slate-900">${row.FECHA}</td>
+                    <td class="px-6 py-4 truncate max-w-xs" title="${row.proyecto}">${row.proyecto}</td>
+                    <td class="px-6 py-4 truncate max-w-xs" title="${row.NOMBRE}">${row.NOMBRE}</td>
+                    <td class="px-6 py-4 text-right font-bold text-slate-700">${formatCurrency(row.ventaVal)}</td>
+                    <td class="px-6 py-4 text-right text-slate-500">${formatCurrency(row.comisionVal)}</td>
+                    <td class="px-6 py-4 text-center">
+                        <span class="${statusClass} text-xs font-medium px-2.5 py-0.5 rounded border border-current opacity-80">${row.estatus}</span>
+                    </td>
+                    <td class="px-6 py-4 text-sm">${row.vendedor}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        };
+
+        // 6. INITIALIZATION & EVENTS
+        document.addEventListener('DOMContentLoaded', () => {
+            initDashboard(initialCSV);
+
+            // Handle file upload
+            document.getElementById('csvUpload').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    Papa.parse(file, {
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: function(results) {
+                            processData(results.data);
+                        }
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
