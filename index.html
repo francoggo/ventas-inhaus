@@ -1,0 +1,139 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
+# Configuración de la página
+st.set_page_config(page_title="Dashboard Inmobiliario INHAUS", layout="wide", page_icon="🏢")
+
+# Estilos CSS personalizados
+st.markdown("""
+    <style>
+    .metric-card {
+        background-color: #f0f2f6;
+        border-left: 5px solid #4B4B4B;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+    .big-font { font-size: 20px !important; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
+
+@st.cache_data
+def load_data(file):
+    # Carga y limpieza de datos
+    df = pd.read_csv(file)
+    
+    # Limpieza de columnas monetarias
+    cols_moneda = ['VENTA', '$_COMISION']
+    for col in cols_moneda:
+        df[col] = df[col].astype(str).str.replace(r'[$, ]', '', regex=True)
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
+    # Limpieza de fechas
+    df['FECHA'] = pd.to_datetime(df['FECHA'])
+    
+    # Normalización de textos
+    string_cols = ['GERENCIA', 'VENDEDOR', 'PROYECTO', 'ESTATUS']
+    for col in string_cols:
+        df[col] = df[col].astype(str).str.strip().str.upper()
+        
+    # Mapping de Estatus
+    status_map = {
+        'OPERADO': 'COBRADA', 'OPERANDO': 'COBRADA',
+        'POR COBRAR': 'POR COBRAR',
+        'CANCELADO': 'CANCELADA',
+        'ESPERA': 'PENDIENTE'
+    }
+    df['ESTATUS_NORM'] = df['ESTATUS'].map(status_map).fillna('OTRO')
+    
+    return df
+
+# Título y Sidebar
+st.title("🏢 Dashboard Comercial & Financiero - INHAUS")
+st.sidebar.header("Filtros de Análisis")
+
+# Cargar archivo (Demo o Upload)
+uploaded_file = st.sidebar.file_uploader("Cargar archivo CSV/Excel", type=['csv', 'xlsx'])
+
+if uploaded_file is None:
+    st.info("👆 Por favor carga tu archivo 'VENTAS-LIMPIAS-INHAUS.csv' en la barra lateral para comenzar.")
+    # Para efectos de demostración, podrías cargar un df por defecto si lo tienes local
+else:
+    df = load_data(uploaded_file)
+
+    # --- FILTROS ---
+    gerencia = st.sidebar.multiselect(
+        "Gerencia", options=df['GERENCIA'].unique(), default=df['GERENCIA'].unique()
+    )
+    
+    estatus = st.sidebar.multiselect(
+        "Estatus Financiero", options=df['ESTATUS_NORM'].unique(), default=df['ESTATUS_NORM'].unique()
+    )
+
+    # Filtrar DF
+    df_filtered = df[(df['GERENCIA'].isin(gerencia)) & (df['ESTATUS_NORM'].isin(estatus))]
+
+    # --- KPIs PRINCIPALES ---
+    col1, col2, col3, col4 = st.columns(4)
+    
+    total_venta = df_filtered['VENTA'].sum()
+    total_comision = df_filtered['$_COMISION'].sum()
+    conteo_ventas = len(df_filtered)
+    ticket_promedio = total_venta / conteo_ventas if conteo_ventas > 0 else 0
+
+    col1.metric("Ventas Totales", f"${total_venta:,.0f}", delta_color="normal")
+    col2.metric("Comisiones Totales", f"${total_comision:,.0f}", delta_color="normal")
+    col3.metric("Unidades Vendidas", f"{conteo_ventas}")
+    col4.metric("Ticket Promedio", f"${ticket_promedio:,.0f}")
+
+    st.markdown("---")
+
+    # --- PESTAÑAS DE ANÁLISIS ---
+    tab1, tab2, tab3 = st.tabs(["📊 Visión General", "🏗️ Proyectos", "👥 Equipo de Ventas"])
+
+    with tab1:
+        c1, c2 = st.columns([2, 1])
+        
+        with c1:
+            # Gráfico de Tendencia Temporal
+            sales_time = df_filtered.groupby(df_filtered['FECHA'].dt.to_period('M'))['VENTA'].sum().reset_index()
+            sales_time['FECHA'] = sales_time['FECHA'].astype(str)
+            fig_line = px.line(sales_time, x='FECHA', y='VENTA', title="Tendencia de Ventas Mensuales", markers=True)
+            st.plotly_chart(fig_line, use_container_width=True)
+            
+        with c2:
+            # Gráfico de Donut Estatus
+            sales_status = df_filtered.groupby('ESTATUS_NORM')['VENTA'].sum().reset_index()
+            fig_pie = px.pie(sales_status, values='VENTA', names='ESTATUS_NORM', hole=0.4, 
+                             title="Distribución por Estatus Financiero",
+                             color_discrete_map={'COBRADA':'green', 'POR COBRAR':'gold', 'PENDIENTE':'orange', 'CANCELADA':'red'})
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+    with tab2:
+        # Ventas por Proyecto
+        sales_proj = df_filtered.groupby('PROYECTO')[['VENTA', '$_COMISION']].sum().sort_values('VENTA', ascending=True).reset_index()
+        fig_bar_proj = px.bar(sales_proj, x='VENTA', y='PROYECTO', text_auto='.2s', 
+                              title="Ranking de Ventas por Proyecto", orientation='h',
+                              color='VENTA', color_continuous_scale='Blues')
+        st.plotly_chart(fig_bar_proj, use_container_width=True)
+
+    with tab3:
+        # Ventas por Asesor y Gerencia
+        c1, c2 = st.columns(2)
+        with c1:
+             sales_gerencia = df_filtered.groupby('GERENCIA')['VENTA'].sum().reset_index()
+             fig_ger = px.bar(sales_gerencia, x='GERENCIA', y='VENTA', title="Performance por Gerencia")
+             st.plotly_chart(fig_ger, use_container_width=True)
+             
+        with c2:
+             sales_vendedor = df_filtered.groupby('VENDEDOR')['VENTA'].sum().sort_values(ascending=False).head(10).reset_index()
+             fig_vend = px.bar(sales_vendedor, x='VENTA', y='VENDEDOR', title="Top 10 Asesores", color='VENTA')
+             st.plotly_chart(fig_vend, use_container_width=True)
+
+    # --- TABLA DE DATOS ---
+    st.markdown("### 📋 Detalle de Operaciones")
+    st.dataframe(df_filtered[['FECHA', 'GERENCIA', 'PROYECTO', 'VENDEDOR', 'CLIENTE', 'VENTA', 'ESTATUS_NORM']]
+                 .rename(columns={'NOMBRE': 'CLIENTE'})
+                 .style.format({'VENTA': '${:,.2f}'}))
